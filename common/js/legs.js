@@ -600,10 +600,8 @@
 			{
 				if( render )
 				{
-					render.call( this, data );
+					return render.call( this, data );
 				}
-				
-				return this.createChildren( );
 			};
 				
 			return prototype.createChildren( );
