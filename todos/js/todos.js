@@ -210,6 +210,28 @@ $( function( )
 			
 			MediatorMap.MapView( Actors.TodoView, Actors.TodoMediator );
 			
+			// when we boot up, check local storage for any todos we have stored
+			CommandMap.MapEvent( Events.STARTUP_COMPLETE, function( event )
+			{
+				var stored = localStorage.getItem( 'todos' );
+				
+				if( stored )
+				{
+					var list = Injector.Get( Actors.TodoList );
+					
+					var todos = JSON.parse( stored );
+					
+					for( var i = 0; i < todos.length; i++ )
+					{
+						var model = Injector.Get( Actors.TodoModel );
+						
+						Legs.Utils.Mixin( model, todos[ i ] );
+						
+						list.add( model );
+					}
+				}
+			} );
+			
 			// when a new todo is submitted, we need to create a new model,
 			// assign its text to the entered text, and add it to our todo list
 			CommandMap.MapEvent( Events.TODO_SUBMITTED, function( event )
@@ -225,7 +247,7 @@ $( function( )
 			// a view for it. here, we temporarily map the view's element
 			// to the todo model so we can keep the association once
 			// the view is mediated
-			CommandMap.MapEvent( Events.TODO_ADDED, function( event )
+			CommandMap.MapEvent( Events.TODO_ADDED, function( event, dispatch )
 			{
 				var dict = Injector.Get( Actors.TodoDictionary );
 
@@ -320,6 +342,20 @@ $( function( )
 					view.render( event.data );
 				}
 			} );
+			
+			// for storage, we need to store the current list every time
+			// a todo changes. we can create one command for that and map
+			// it to every important event, how DRY!
+			var PersistTodoListCommand = function( event )
+			{
+				var list = Injector.Get( Actors.TodoList );
+				
+				localStorage.setItem( 'todos', JSON.stringify( list._collection ) );
+			};
+			
+			CommandMap.MapEvent( Events.TODO_ADDED, PersistTodoListCommand );
+			CommandMap.MapEvent( Events.TODO_REMOVED, PersistTodoListCommand );
+			CommandMap.MapEvent( Events.TODO_CHANGED, PersistTodoListCommand );
 		}
 	} );
 } );
