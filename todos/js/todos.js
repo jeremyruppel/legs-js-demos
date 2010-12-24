@@ -1,3 +1,8 @@
+// 
+//  Legs.js | Todo List Demo
+// 
+//  inspired by: backbone.js todo list demo ( http://documentcloud.github.com/backbone/examples/todos/index.html )
+//
 $( function( )
 {
 	new Legs.Context( '#todoapp',
