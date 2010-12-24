@@ -26,7 +26,10 @@ $( function( )
 			TODO_EDITED : 'Todo edited',
 			
 			// a todo model has been changed in some way
-			TODO_CHANGED : 'Todo changed'
+			TODO_CHANGED : 'Todo changed',
+			
+			// The user wants to clear completed items
+			CLEAR_REQUESTED : 'Clear requested'
 		},
 		Actors :
 		{
@@ -50,7 +53,7 @@ $( function( )
 			} ),
 			TodoModel : new Legs.Model( function( Events, dispatch )
 			{
-				var field = function( name, changed )
+				var field = function( name )
 				{
 					this[ name ] = function( val )
 					{
@@ -62,22 +65,15 @@ $( function( )
 						{
 							this[ '_' + name ] = val;
 							
-							if( changed ) changed.call( this, val );
+							dispatch( new Legs.Event( Events.TODO_CHANGED, this ) );
 							
 							return this;
 						}
 					};
 				};
 				
-				field.call( this, 'text', function( val )
-				{
-					dispatch( new Legs.Event( Events.TODO_CHANGED, this ) );
-				} );
-				
-				field.call( this, 'done', function( val )
-				{
-					dispatch( new Legs.Event( Events.TODO_CHANGED, this ) );
-				} );
+				field.call( this, 'text' );
+				field.call( this, 'done' );
 			} ),
 			TodoDictionary : new Legs.Model( function( Events, dispatch )
 			{
@@ -124,37 +120,16 @@ $( function( )
 			} ),
 			TodoView : new Legs.View( 'li.todo',
 			{
-				check : '.check',
+				check   : '.check',
 				content : '.todo-content',
 				destroy : '.todo-destroy',
-				input : '.todo-input'
+				input   : '.todo-input'
 			},
 			function( todo )
 			{
-				var template = '<div class="todo"><div class="display"><input class="check" type="checkbox" /><div class="todo-content"></div><span class="todo-destroy"></span></div><div class="edit"><input class="todo-input" type="text" value="" /></div></div>';
+				this.root.html( Mustache.to_html( $( '#item-template' ).text( ), todo ) );
 				
-				this.root.html( template );
-				
-				this.createChildren( );
-				
-				this.content.text( todo.text( ) );
-				
-				this.input.val( todo.text( ) );
-				
-				if( todo.done( ) )
-				{
-					this.root.addClass( 'done' );
-					
-					this.check.attr( 'checked', 'checked' );
-				}
-				else
-				{
-					this.root.removeClass( 'done' );
-					
-					this.check.attr( 'checked', null );					
-				}
-				
-				return this.element;
+				return this.createChildren( ).element;
 			} ),
 			TodoMediator : new Legs.Mediator( function( Events, dispatch )
 			{
@@ -196,6 +171,28 @@ $( function( )
 					
 					dispatch( new Legs.Event( Events.TODO_DISPLAYED, view ) );
 				};
+			} ),
+			StatsView : new Legs.View( '#todo-stats',
+			{
+				link : 'a'
+			},
+			function( stats )
+			{
+				this.root.html( Mustache.to_html( $( '#stats-template' ).text( ), stats ) );
+				
+				return this.createChildren( );
+			} ),
+			StatsMediator : new Legs.Mediator( function( Events, dispatch )
+			{
+				this.onregister = function( view )
+				{
+					this.events.map( view.link, Events.CLICK, function( event )
+					{
+						dispatch( new Legs.Event( Events.CLEAR_REQUESTED ) );
+						
+						return false;
+					} );
+				};
 			} )
 		},
 		Startup : function( Events, CommandMap, Actors, Injector, MediatorMap, ContextView )
@@ -204,11 +201,15 @@ $( function( )
 			
 			Injector.MapSingleton( Actors.TodoDictionary );
 			
+			Injector.MapSingleton( Actors.StatsView );
+			
 			Injector.MapClass( Actors.TodoModel );
 			
 			MediatorMap.MapView( Actors.FormView, Actors.FormMediator );
 			
 			MediatorMap.MapView( Actors.TodoView, Actors.TodoMediator );
+			
+			MediatorMap.MapView( Actors.StatsView, Actors.StatsMediator );
 			
 			// when we boot up, check local storage for any todos we have stored
 			CommandMap.MapEvent( Events.STARTUP_COMPLETE, function( event )
@@ -356,6 +357,65 @@ $( function( )
 			CommandMap.MapEvent( Events.TODO_ADDED, PersistTodoListCommand );
 			CommandMap.MapEvent( Events.TODO_REMOVED, PersistTodoListCommand );
 			CommandMap.MapEvent( Events.TODO_CHANGED, PersistTodoListCommand );
+			
+			// and we'll do the same with updating our stats view
+			var UpdateStatsCommand = function( event )
+			{
+				var list = Injector.Get( Actors.TodoList );
+				
+				var stats = Injector.Get( Actors.StatsView );
+				
+				var context = 
+				{
+					total : function( )
+					{
+						return list._collection.length;
+					},
+					remaining : function( )
+					{
+						return this.total( ) - this.done( );
+					},
+					remaining_word : function( )
+					{
+						return this.remaining( ) > 1 ? 'items' : 'item';
+					},
+					done : function( )
+					{
+						var count = 0;
+						
+						for( var i = 0; i < list._collection.length; i++ )
+						{
+							if( true === list._collection[ i ].done( ) ) count++;
+						}
+						
+						return count;
+					},
+					done_word : function( )
+					{
+						return this.done( ) > 1 ? 'items' : 'item';
+					}
+				};
+				
+				stats.render( context );
+			};
+			
+			CommandMap.MapEvent( Events.TODO_ADDED, UpdateStatsCommand );
+			CommandMap.MapEvent( Events.TODO_REMOVED, UpdateStatsCommand );
+			CommandMap.MapEvent( Events.TODO_CHANGED, UpdateStatsCommand );
+			
+			// finally, we can clear all completed items with this command
+			CommandMap.MapEvent( Events.CLEAR_REQUESTED, function( event )
+			{
+				var list = Injector.Get( Actors.TodoList );
+				
+				for( var i = list._collection.length - 1; i >= 0; i-- )
+				{
+					if( list._collection[ i ].done( ) )
+					{
+						list.remove( list._collection[ i ] );
+					}
+				}
+			} );
 		}
 	} );
 } );
